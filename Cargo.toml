@@ -1,0 +1,21 @@
+[package]
+name = "rooting"
+version = "0.1.0"
+edition = "2021"
+license = "ISC"
+description = "Associate data with HTML elements in WASM"
+repository = "https://github.com/andrewbaxter/rooting"
+readme = "readme.md"
+
+[dependencies]
+gloo-events = "0.1.2"
+wasm-bindgen = "0.2.87"
+web-sys = { version = "0.3.64", features = [
+    "Element",
+    "Document",
+    "Window",
+    "Node",
+    "HtmlCollection",
+    "DomTokenList",
+    "HtmlElement",
+] }
