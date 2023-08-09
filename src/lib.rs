@@ -240,17 +240,22 @@ pub fn el(tag: &str) -> ScopeElement {
 }
 
 thread_local!{
-    static ROOT: Cell<Option<ScopeElement>> = Cell::new(None);
+    static ROOT: Cell<Vec<ScopeElement>> = Cell::new(vec![]);
 }
 
-/// Set the element as the root, replacing the existing element with id `id`.
+/// Replaces the existing element with id `id`, taking ownership and extending the
+/// new element's lifetime.
 pub fn set_root_replace(id: &str, el: ScopeElement) {
     doc().get_element_by_id(id).unwrap_throw().replace_with_with_node_1(&el.0.borrow().el).unwrap_throw();
-    ROOT.with(|r| r.set(Some(el)));
+    ROOT.with(|r| r.set(vec![el]));
 }
 
-/// Set the element as the root, adding the element to the document body.
-pub fn set_root(el: ScopeElement) {
-    doc().body().unwrap_throw().append_child(&el.0.borrow().el).unwrap_throw();
-    ROOT.with(|r| r.set(Some(el)));
+/// Sets the elements as the children of the body, taking ownership and their
+/// lifetimes.
+pub fn set_root(elements: Vec<ScopeElement>) {
+    doc()
+        .body()
+        .unwrap_throw()
+        .replace_children_with_node(&elements.iter().map(|e| e.0.borrow().el.clone()).collect());
+    ROOT.with(|r| r.set(elements));
 }
