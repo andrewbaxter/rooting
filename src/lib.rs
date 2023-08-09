@@ -23,16 +23,22 @@ trait ScopeValue { }
 
 impl<T> ScopeValue for _ScopeValue<T> { }
 
-struct _ScopeEl {
+struct _ScopeElement {
     el: Element,
-    parent: Option<Weak<RefCell<_ScopeEl>>>,
+    parent: Option<Weak<RefCell<_ScopeElement>>>,
     index_in_parent: usize,
     children: Vec<ScopeElement>,
     local: Vec<Box<dyn ScopeValue>>,
 }
 
-impl _ScopeEl {
-    fn _splice(&mut self, self2: &Rc<RefCell<_ScopeEl>>, offset: usize, remove: usize, add: Vec<ScopeElement>) {
+impl _ScopeElement {
+    fn splice(
+        &mut self,
+        self2: &Rc<RefCell<_ScopeElement>>,
+        offset: usize,
+        remove: usize,
+        add: Vec<ScopeElement>,
+    ) {
         let el_children = self.el.children();
 
         // Remove existing dom children
@@ -64,6 +70,17 @@ impl _ScopeEl {
             self.children[i].0.borrow_mut().index_in_parent = i;
         }
     }
+
+    fn append(&mut self, self2: &Rc<RefCell<_ScopeElement>>, add: Vec<ScopeElement>) {
+        let offset = self.children.len();
+        for (i, child) in add.iter().enumerate() {
+            let mut c = child.0.borrow_mut();
+            c.parent = Some(Rc::downgrade(self2));
+            c.index_in_parent = offset + i;
+            self.el.append_child(&c.el).unwrap_throw();
+        }
+        self.children.extend(add);
+    }
 }
 
 /// An html element with associated data sharing the same lifetime. There are a
@@ -75,10 +92,9 @@ impl _ScopeEl {
 /// a child element you'll end up with a reference cycle and the subtree will never
 /// be freed.  You can use `weak()` to get a weak reference if you want to do this.
 #[derive(Clone)]
-pub struct ScopeElement(Rc<RefCell<_ScopeEl>>);
+pub struct ScopeElement(Rc<RefCell<_ScopeElement>>);
 
 impl ScopeElement {
-    /// Set text contents.
     pub fn init_text(self, text: &str) -> Self {
         self.0.borrow().el.set_text_content(Some(text));
         return self;
@@ -90,6 +106,7 @@ impl ScopeElement {
         return self;
     }
 
+    /// Set the element id.
     pub fn init_id(self, id: &str) -> Self {
         self.0.borrow().el.set_id(id);
         return self;
@@ -100,6 +117,8 @@ impl ScopeElement {
         return self;
     }
 
+    /// Set an arbitrary attribute.  Note there are special methods for setting `class`
+    /// and `id` which may afford safer workflows.
     pub fn attr(&self, key: &str, value: &str) -> &Self {
         self.0.borrow().el.set_attribute(key, value).unwrap_throw();
         return self;
@@ -113,6 +132,7 @@ impl ScopeElement {
         return self;
     }
 
+    /// Add (if not existing) all of the listed keys.
     pub fn classes(&self, keys: &[&str]) -> &Self {
         let c = self.0.borrow().el.class_list();
         for k in keys {
@@ -121,6 +141,7 @@ impl ScopeElement {
         return self;
     }
 
+    /// Remove (if not existing) all of the listed keys.
     pub fn remove_classes(&self, keys: &[&str]) -> &Self {
         let c = self.0.borrow().el.class_list();
         for k in keys {
@@ -129,45 +150,34 @@ impl ScopeElement {
         return self;
     }
 
-    /// Add a single element to the end.
     pub fn init_append1(self, add: ScopeElement) -> Self {
-        let len = self.0.borrow().children.len();
-        self.splice(len, 0, vec![add]);
+        self.0.borrow_mut().append(&self.0, vec![add]);
         return self;
     }
 
     /// Add a single element to the end.
     pub fn append1(&self, add: ScopeElement) -> &Self {
-        let len = self.0.borrow().children.len();
-        return self.splice(len, 0, vec![add]);
+        self.0.borrow_mut().append(&self.0, vec![add]);
+        return self;
     }
 
-    /// Add multiple elements to the end.
     pub fn init_append(self, add: Vec<ScopeElement>) -> Self {
-        let mut s = self.0.borrow_mut();
-        let len = s.children.len();
-        s._splice(&self.0, len, 0, add);
-        drop(s);
+        self.0.borrow_mut().append(&self.0, add);
         return self;
     }
 
     /// Add multiple elements to the end.
     pub fn append(&self, add: Vec<ScopeElement>) -> &Self {
-        let mut s = self.0.borrow_mut();
-        let len = s.children.len();
-        s._splice(&self.0, len, 0, add);
-        drop(s);
+        self.0.borrow_mut().append(&self.0, add);
         return self;
     }
 
     /// Add and remove multiple elements.
     pub fn splice(&self, offset: usize, remove: usize, add: Vec<ScopeElement>) -> &Self {
-        self.0.borrow_mut()._splice(&self.0, offset, remove, add);
+        self.0.borrow_mut().splice(&self.0, offset, remove, add);
         return self;
     }
 
-    /// Attach the value to this scope, so it doesn't get dropped until the element is
-    /// removed from the tree.
     pub fn init_drop<T: 'static>(self, local: T) -> Self {
         self.0.borrow_mut().local.push(Box::new(_ScopeValue(local)));
         return self;
@@ -180,8 +190,6 @@ impl ScopeElement {
         return self;
     }
 
-    /// Add a listener for an event. The listener will be detached when this element is
-    /// dropped (removed from the tree).
     pub fn init_listen(self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> Self {
         let mut s = self.0.borrow_mut();
         let listener = EventListener::new(&s.el, event, cb);
@@ -207,7 +215,7 @@ impl ScopeElement {
 }
 
 #[derive(Clone)]
-pub struct WeakScopeElement(Weak<RefCell<_ScopeEl>>);
+pub struct WeakScopeElement(Weak<RefCell<_ScopeElement>>);
 
 impl WeakScopeElement {
     pub fn upgrade(&self) -> Option<ScopeElement> {
@@ -222,7 +230,7 @@ pub fn doc() -> Document {
 
 /// Create a new element.
 pub fn el(tag: &str) -> ScopeElement {
-    return ScopeElement(Rc::new(RefCell::new(_ScopeEl {
+    return ScopeElement(Rc::new(RefCell::new(_ScopeElement {
         el: doc().create_element(tag).unwrap(),
         parent: None,
         index_in_parent: 0,

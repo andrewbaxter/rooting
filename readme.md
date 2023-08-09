@@ -1,6 +1,6 @@
-This is a library for managing lifetimes of data associated with DOM elements in WASM. This is for an a la carte solution, rather than using a framework which would typically take care of this for you.
+This is a library for managing lifetimes of data associated with DOM elements in WASM. This is for an a la carte UI solution, rather than using a framework which would typically take care of this for you.
 
-This manages a globally owned tree of `ScopeElement` which is proxied onto the actual DOM. `ScopedElement` can have attached data via the `e.drop(data)` method, which will be destroyed when the element is dropped (removed from the tree, if no other references exist).
+This manages a globally owned tree of `ScopeElement` which is proxied onto the actual DOM. Attach data to a `ScopedElement` with the `e.drop(data)` method. The data will be destroyed when the element is (when removed from the tree, if no other references exist).
 
 Create and modify `ScopeElement`s instead of using `create_element` and doing direct modification.
 
