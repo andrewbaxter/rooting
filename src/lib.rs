@@ -178,8 +178,8 @@ impl ScopeElement {
         return self;
     }
 
-    pub fn drop<T: 'static>(self, local: T) -> Self {
-        self.0.borrow_mut().local.push(Box::new(_ScopeValue(local)));
+    pub fn drop<T: 'static>(self, supplier: impl FnOnce(&ScopeElement) -> T) -> Self {
+        self.0.borrow_mut().local.push(Box::new(_ScopeValue(supplier(&self))));
         return self;
     }
 
