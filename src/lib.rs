@@ -84,9 +84,9 @@ impl _ScopeElement {
 }
 
 /// An html element with associated data sharing the same lifetime. There are a
-/// number of `init_` methods - these are the same as the non-init methods, but
-/// consume `self` for easy chaining.  For modifying existing elements
-/// post-creation use the non-`init_` methods.
+/// number of `mut_` and non-`mut_` method pairs. The non-`mut_` methods are
+/// chainable, for use during element creation. The `mut_` methods are for
+/// modifying existing elements.
 ///
 /// `ScopeElement` values are clonable. Note that if you store a parent element in
 /// a child element you'll end up with a reference cycle and the subtree will never
@@ -95,36 +95,36 @@ impl _ScopeElement {
 pub struct ScopeElement(Rc<RefCell<_ScopeElement>>);
 
 impl ScopeElement {
-    pub fn init_text(self, text: &str) -> Self {
+    pub fn text(self, text: &str) -> Self {
         self.0.borrow().el.set_text_content(Some(text));
         return self;
     }
 
     /// Set text contents.
-    pub fn text(&self, text: &str) -> &Self {
+    pub fn mut_text(&self, text: &str) -> &Self {
         self.0.borrow().el.set_text_content(Some(text));
         return self;
     }
 
     /// Set the element id.
-    pub fn init_id(self, id: &str) -> Self {
+    pub fn id(self, id: &str) -> Self {
         self.0.borrow().el.set_id(id);
         return self;
     }
 
-    pub fn init_attr(self, key: &str, value: &str) -> Self {
+    pub fn attr(self, key: &str, value: &str) -> Self {
         self.0.borrow().el.set_attribute(key, value).unwrap_throw();
         return self;
     }
 
     /// Set an arbitrary attribute.  Note there are special methods for setting `class`
     /// and `id` which may afford safer workflows.
-    pub fn attr(&self, key: &str, value: &str) -> &Self {
+    pub fn mut_attr(&self, key: &str, value: &str) -> &Self {
         self.0.borrow().el.set_attribute(key, value).unwrap_throw();
         return self;
     }
 
-    pub fn init_classes(self, keys: &[&str]) -> Self {
+    pub fn classes(self, keys: &[&str]) -> Self {
         let c = self.0.borrow().el.class_list();
         for k in keys {
             c.add_1(k).unwrap();
@@ -133,7 +133,7 @@ impl ScopeElement {
     }
 
     /// Add (if not existing) all of the listed keys.
-    pub fn classes(&self, keys: &[&str]) -> &Self {
+    pub fn mut_classes(&self, keys: &[&str]) -> &Self {
         let c = self.0.borrow().el.class_list();
         for k in keys {
             c.add_1(k).unwrap();
@@ -142,7 +142,7 @@ impl ScopeElement {
     }
 
     /// Remove (if not existing) all of the listed keys.
-    pub fn remove_classes(&self, keys: &[&str]) -> &Self {
+    pub fn mut_remove_classes(&self, keys: &[&str]) -> &Self {
         let c = self.0.borrow().el.class_list();
         for k in keys {
             c.add_1(k).unwrap();
@@ -150,47 +150,47 @@ impl ScopeElement {
         return self;
     }
 
-    pub fn init_append1(self, add: ScopeElement) -> Self {
+    pub fn append1(self, add: ScopeElement) -> Self {
         self.0.borrow_mut().append(&self.0, vec![add]);
         return self;
     }
 
     /// Add a single element to the end.
-    pub fn append1(&self, add: ScopeElement) -> &Self {
+    pub fn mut_append1(&self, add: ScopeElement) -> &Self {
         self.0.borrow_mut().append(&self.0, vec![add]);
         return self;
     }
 
-    pub fn init_append(self, add: Vec<ScopeElement>) -> Self {
+    pub fn append(self, add: Vec<ScopeElement>) -> Self {
         self.0.borrow_mut().append(&self.0, add);
         return self;
     }
 
     /// Add multiple elements to the end.
-    pub fn append(&self, add: Vec<ScopeElement>) -> &Self {
+    pub fn mut_append(&self, add: Vec<ScopeElement>) -> &Self {
         self.0.borrow_mut().append(&self.0, add);
         return self;
     }
 
     /// Add and remove multiple elements.
-    pub fn splice(&self, offset: usize, remove: usize, add: Vec<ScopeElement>) -> &Self {
+    pub fn mut_splice(&self, offset: usize, remove: usize, add: Vec<ScopeElement>) -> &Self {
         self.0.borrow_mut().splice(&self.0, offset, remove, add);
         return self;
     }
 
-    pub fn init_drop<T: 'static>(self, local: T) -> Self {
+    pub fn drop<T: 'static>(self, local: T) -> Self {
         self.0.borrow_mut().local.push(Box::new(_ScopeValue(local)));
         return self;
     }
 
     /// Attach the value to this scope, so it doesn't get dropped until the element is
     /// removed from the tree.
-    pub fn drop<T: 'static>(&self, local: T) -> &Self {
+    pub fn mut_drop<T: 'static>(&self, local: T) -> &Self {
         self.0.borrow_mut().local.push(Box::new(_ScopeValue(local)));
         return self;
     }
 
-    pub fn init_listen(self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> Self {
+    pub fn listen(self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> Self {
         let mut s = self.0.borrow_mut();
         let listener = EventListener::new(&s.el, event, cb);
         s.local.push(Box::new(_ScopeValue(listener)));
@@ -200,7 +200,7 @@ impl ScopeElement {
 
     /// Add a listener for an event. The listener will be detached when this element is
     /// dropped (removed from the tree).
-    pub fn listen(&self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> &Self {
+    pub fn mut_listen(&self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> &Self {
         let mut s = self.0.borrow_mut();
         let listener = EventListener::new(&s.el, event, cb);
         s.local.push(Box::new(_ScopeValue(listener)));
