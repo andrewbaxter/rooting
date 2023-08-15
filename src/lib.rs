@@ -9,19 +9,23 @@ use std::{
     },
 };
 use gloo_events::EventListener;
+use gloo_utils::document;
 use wasm_bindgen::UnwrapThrowExt;
 use web_sys::{
     Element,
     Node,
     Event,
-    Document,
 };
 
 struct _ScopeValue<T>(T);
 
-trait ScopeValue { }
+pub trait ScopeValue { }
 
 impl<T> ScopeValue for _ScopeValue<T> { }
+
+pub fn scope_any<T: 'static>(value: T) -> Box<dyn ScopeValue> {
+    return Box::new(_ScopeValue(value));
+}
 
 struct _ScopeElement {
     el: Element,
@@ -53,9 +57,6 @@ impl _ScopeElement {
         let insert_ref = insert_ref.as_ref().map(|x| x as &Node);
         for (i, child) in add.iter().enumerate() {
             let mut c = child.0.borrow_mut();
-            if c.parent.is_some() {
-                panic!("Adding child already in tree");
-            }
             c.parent = Some(Rc::downgrade(self2));
             c.index_in_parent = offset + i;
             self.el.insert_before(&c.el, insert_ref).unwrap_throw();
@@ -71,7 +72,12 @@ impl _ScopeElement {
         }
     }
 
-    fn append(&mut self, self2: &Rc<RefCell<_ScopeElement>>, add: Vec<ScopeElement>) {
+    fn clear(&mut self) {
+        self.el.set_text_content(None);
+        self.children.clear();
+    }
+
+    fn extend(&mut self, self2: &Rc<RefCell<_ScopeElement>>, add: Vec<ScopeElement>) {
         let offset = self.children.len();
         for (i, child) in add.iter().enumerate() {
             let mut c = child.0.borrow_mut();
@@ -150,31 +156,37 @@ impl ScopeElement {
         return self;
     }
 
-    pub fn append1(self, add: ScopeElement) -> Self {
-        self.0.borrow_mut().append(&self.0, vec![add]);
+    pub fn push(self, add: ScopeElement) -> Self {
+        self.0.borrow_mut().extend(&self.0, vec![add]);
         return self;
     }
 
     /// Add a single element to the end.
-    pub fn mut_append1(&self, add: ScopeElement) -> &Self {
-        self.0.borrow_mut().append(&self.0, vec![add]);
+    pub fn mut_push(&self, add: ScopeElement) -> &Self {
+        self.0.borrow_mut().extend(&self.0, vec![add]);
         return self;
     }
 
-    pub fn append(self, add: Vec<ScopeElement>) -> Self {
-        self.0.borrow_mut().append(&self.0, add);
+    pub fn extend(self, add: Vec<ScopeElement>) -> Self {
+        self.0.borrow_mut().extend(&self.0, add);
         return self;
     }
 
     /// Add multiple elements to the end.
-    pub fn mut_append(&self, add: Vec<ScopeElement>) -> &Self {
-        self.0.borrow_mut().append(&self.0, add);
+    pub fn mut_extend(&self, add: Vec<ScopeElement>) -> &Self {
+        self.0.borrow_mut().extend(&self.0, add);
         return self;
     }
 
     /// Add and remove multiple elements.
     pub fn mut_splice(&self, offset: usize, remove: usize, add: Vec<ScopeElement>) -> &Self {
         self.0.borrow_mut().splice(&self.0, offset, remove, add);
+        return self;
+    }
+
+    /// Remove all children.
+    pub fn mut_clear(&self) -> &Self {
+        self.0.borrow_mut().clear();
         return self;
     }
 
@@ -190,7 +202,7 @@ impl ScopeElement {
         return self;
     }
 
-    pub fn listen(self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> Self {
+    pub fn on(self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> Self {
         let mut s = self.0.borrow_mut();
         let listener = EventListener::new(&s.el, event, cb);
         s.local.push(Box::new(_ScopeValue(listener)));
@@ -223,15 +235,22 @@ impl WeakScopeElement {
     }
 }
 
-/// Helper to get the document.
-pub fn doc() -> Document {
-    return web_sys::window().unwrap_throw().document().unwrap_throw();
-}
-
 /// Create a new element.
 pub fn el(tag: &str) -> ScopeElement {
     return ScopeElement(Rc::new(RefCell::new(_ScopeElement {
-        el: doc().create_element(tag).unwrap(),
+        el: document().create_element(tag).unwrap(),
+        parent: None,
+        index_in_parent: 0,
+        children: vec![],
+        local: vec![],
+    })));
+}
+
+/// Create a new scoped element from an element passed in (ex: for existing
+/// elements, or namespaced elements set up specially).
+pub fn el_from_raw(el: Element) -> ScopeElement {
+    return ScopeElement(Rc::new(RefCell::new(_ScopeElement {
+        el: el,
         parent: None,
         index_in_parent: 0,
         children: vec![],
@@ -246,14 +265,14 @@ thread_local!{
 /// Replaces the existing element with id `id`, taking ownership and extending the
 /// new element's lifetime.
 pub fn set_root_replace(id: &str, el: ScopeElement) {
-    doc().get_element_by_id(id).unwrap_throw().replace_with_with_node_1(&el.0.borrow().el).unwrap_throw();
+    document().get_element_by_id(id).unwrap_throw().replace_with_with_node_1(&el.0.borrow().el).unwrap_throw();
     ROOT.with(|r| r.set(vec![el]));
 }
 
 /// Sets the elements as the children of the body, taking ownership and their
 /// lifetimes.
 pub fn set_root(elements: Vec<ScopeElement>) {
-    doc()
+    document()
         .body()
         .unwrap_throw()
         .replace_children_with_node(&elements.iter().map(|e| e.0.borrow().el.clone()).collect());
