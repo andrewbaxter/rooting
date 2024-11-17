@@ -28,4 +28,6 @@ web-sys = { version = "0.3", features = [
     "ResizeObserver",
     "ResizeObserverEntry",
     "ResizeObserverSize",
+    "ResizeObserverOptions",
+    "ResizeObserverBoxOptions",
 ] }

@@ -13,14 +13,15 @@ use wasm_bindgen::{
 use web_sys::{
     Element,
     ResizeObserver as ResizeObserver1,
+    ResizeObserverOptions,
 };
 use crate::{
     scope_any,
     ScopeValue,
 };
 
-struct ResizeObserver_ {
-    resize_observer: ResizeObserver1,
+pub struct ResizeObserver_ {
+    pub js_resize_observer: ResizeObserver1,
     _js_cb: ScopeValue,
 }
 
@@ -29,7 +30,7 @@ struct ResizeObserver_ {
 /// discussions, if you need to monitor multiple elements with the same callback,
 /// using a single `ResizeObserver` is faster than using multiple `ResizeObserver`s.
 #[derive(Clone)]
-pub struct ResizeObserver(Rc<ResizeObserver_>);
+pub struct ResizeObserver(pub Rc<ResizeObserver_>);
 
 /// See `ResizeObserver`'s `observe` method.
 pub struct ObserveHandle {
@@ -52,7 +53,7 @@ impl ResizeObserver {
         }) as Box<dyn Fn(Array, JsValue)>);
         let resize_observer = ResizeObserver1::new(js_cb.as_ref().unchecked_ref()).unwrap();
         return Self(Rc::new(ResizeObserver_ {
-            resize_observer: resize_observer,
+            js_resize_observer: resize_observer,
             _js_cb: scope_any(js_cb),
         }));
     }
@@ -63,7 +64,15 @@ impl ResizeObserver {
     ///
     /// When the `ObserveHandle` is dropped, the target will stop being observed.
     pub fn observe(&self, target: &Element) -> ObserveHandle {
-        self.0.resize_observer.observe(target.dyn_ref().unwrap());
+        self.0.js_resize_observer.observe(target.dyn_ref().unwrap());
+        return ObserveHandle {
+            target: target.clone(),
+            resize_observer: Rc::downgrade(&self.0),
+        }
+    }
+
+    pub fn observe_with_options(&self, target: &Element, opts: &ResizeObserverOptions) -> ObserveHandle {
+        self.0.js_resize_observer.observe_with_options(target.dyn_ref().unwrap(), opts);
         return ObserveHandle {
             target: target.clone(),
             resize_observer: Rc::downgrade(&self.0),
@@ -76,6 +85,6 @@ impl Drop for ObserveHandle {
         let Some(resize_observer) = self.resize_observer.upgrade() else {
             return;
         };
-        resize_observer.resize_observer.unobserve(self.target.dyn_ref().unwrap());
+        resize_observer.js_resize_observer.unobserve(self.target.dyn_ref().unwrap());
     }
 }

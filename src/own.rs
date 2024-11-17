@@ -6,6 +6,7 @@ impl<T> ScopeValueTrait_ for ScopeValue_<T> { }
 
 /// This is a wrapper type that can hold any object opaquely (see `scope_any`) and
 /// will execute `Drop` for the contained object.
+#[allow(dead_code)]
 pub struct ScopeValue(Box<dyn ScopeValueTrait_>);
 
 /// This converts anything into a single type, so you can put it in a collection.
