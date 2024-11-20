@@ -7,7 +7,10 @@ use std::{
         RefCell,
     },
 };
-use gloo_events::EventListener;
+use gloo_events::{
+    EventListener,
+    EventListenerOptions,
+};
 use gloo_utils::document;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -228,9 +231,32 @@ impl El {
         return self;
     }
 
+    pub fn on_with_options(
+        self,
+        event: &'static str,
+        opts: EventListenerOptions,
+        cb: impl FnMut(&Event) + 'static,
+    ) -> Self {
+        self.ref_on_with_options(event, opts, cb);
+        return self;
+    }
+
     pub fn ref_on(&self, event: &'static str, cb: impl FnMut(&Event) + 'static) -> &Self {
         let mut s = self.0.borrow_mut();
         let listener = EventListener::new(&s.el, event, cb);
+        s.local.push(scope_any(listener));
+        drop(s);
+        return self;
+    }
+
+    pub fn ref_on_with_options(
+        &self,
+        event: &'static str,
+        opts: EventListenerOptions,
+        cb: impl FnMut(&Event) + 'static,
+    ) -> &Self {
+        let mut s = self.0.borrow_mut();
+        let listener = EventListener::new_with_options(&s.el, event, opts, cb);
         s.local.push(scope_any(listener));
         drop(s);
         return self;
