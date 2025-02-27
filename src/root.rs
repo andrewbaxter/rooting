@@ -36,6 +36,6 @@ pub fn set_root(elements: Vec<El>) {
 
 /// Roots the lifetime of some values with no relation to the DOM, for (ex:)
 /// scripts injecting values into other documents.
-pub fn set_root_non_dom(value: ScopeValue) {
-    ROOT.with(|r| r.set(value));
+pub fn set_root_non_dom<T: 'static>(value: T) {
+    ROOT.with(|r| r.set(scope_any(value)));
 }
