@@ -1,32 +1,37 @@
-use std::{
-    rc::{
-        Weak,
-        Rc,
+use {
+    std::{
+        rc::{
+            Weak,
+            Rc,
+        },
+        cell::{
+            RefCell,
+        },
     },
-    cell::{
-        RefCell,
+    gloo_events::{
+        EventListener,
+        EventListenerOptions,
     },
-};
-use gloo_events::{
-    EventListener,
-    EventListenerOptions,
-};
-use gloo_utils::document;
-use wasm_bindgen::JsCast;
-use web_sys::{
-    Element,
-    Node,
-    Event,
-    ResizeObserverEntry,
-    ResizeObserverSize,
-};
-use crate::{
-    own::{
-        scope_any,
-        ScopeValue,
+    gloo_utils::document,
+    wasm_bindgen::{
+        JsCast,
+        JsValue,
     },
-    resize::{
-        ResizeObserver,
+    web_sys::{
+        Element,
+        Node,
+        Event,
+        ResizeObserverEntry,
+        ResizeObserverSize,
+    },
+    crate::{
+        own::{
+            scope_any,
+            ScopeValue,
+        },
+        resize::{
+            ResizeObserver,
+        },
     },
 };
 
@@ -300,17 +305,31 @@ impl El {
 
     /// Replace the element in its parent with zero or more new elements.
     pub fn ref_replace(&self, other: Vec<El>) {
-        let parent;
-        let index_in_parent;
-        {
-            let self1 = self.0.borrow();
-            index_in_parent = self1.index_in_parent;
-            let Some(parent1) = self1.parent.as_ref().and_then(|p| p.upgrade()) else {
-                return;
-            };
-            parent = parent1;
+        let mut self1 = self.0.borrow_mut();
+        if let Some(el_parent) = self1.parent.as_ref().and_then(|x| x.upgrade()) {
+            // Proper replacement -- this element is removed from its parent and the
+            // replacement is put in its place. This El can be reused wherever, but obviously
+            // without re-placing it further modifications won't appear anywhere.
+            let index_in_parent = self1.index_in_parent;
+            drop(self1);
+            El(el_parent).ref_splice(index_in_parent, 1, other);
+        } else {
+            // Pseudo-replacement, for when you have disconnected hierarchies (objects with
+            // multiple El in a DOM tree but no El parent-child relation)
+            //
+            // This element is hollowed out and the replacement is stored as an "owned value".
+            // You shouldn't reuse this element directly, it now exists just to root the
+            // replacements. Modifications won't fail, but won't appear anywhere, and
+            // owning/adding event listeners will just waste memory.
+            self1.children.clear();
+            self1.local.clear();
+            self1.local.push(scope_any(other.clone()));
+            self1
+                .el
+                .replace_with_with_node(&&other.into_iter().map(|x| JsValue::from(x.raw())).collect())
+                .expect("Failed to replace element with new elements");
+            self1.el = document().create_element("div").unwrap();
         }
-        El(parent).ref_splice(index_in_parent, 1, other);
     }
 
     /// Get the wrapped web_sys element from the El.
